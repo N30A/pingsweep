@@ -1,40 +1,58 @@
-import datetime
-import ipaddress
-from concurrent.futures import ThreadPoolExecutor
+from argparse import ArgumentParser
+from datetime import datetime
+from ipaddress import IPv4Network
+from threading import Thread
 
 from pythonping import ping
 
 
-def scanner(address):
-    response = ping(address, count=1, timeout=1)
+def scan(ip, success, failed):
+
+    response = ping(ip, count=1, timeout=2)
 
     if response.success():
-        print(address)
+        success.append(ip)
     else:
-        pass
-
-
-def convert_range(address_range):
-
-    address_list = []
-
-    for address in ipaddress.IPv4Network(address_range):
-        address_list.append(address.exploded)
-    return address_list
-
-
-def current_time():
-    return datetime.datetime.now().replace(microsecond=0)
+        failed.append(ip)
 
 
 def main():
-    start = current_time()
-    addresses = convert_range("192.168.55.0/24")
+    parser = ArgumentParser()
+    parser.add_argument("IP_RANGE", help="IP Range of the network, e.g. 192.168.1.0/24")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="increase output verbosity",
+    )
 
-    with ThreadPoolExecutor() as executor:
-        executor.map(scanner, addresses)
-    end = current_time()
-    print(f"\nFinished: {end - start}")
+    args = parser.parse_args()
+
+    threads = []
+    success = []
+    failed = []
+
+    start = datetime.now().replace(microsecond=0)
+
+    for ip in IPv4Network(args.IP_RANGE).hosts():
+        threads.append(Thread(target=scan, args=(ip.exploded, success, failed)))
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    end = datetime.now().replace(microsecond=0)
+
+    if args.verbose:
+        print("\n".join(success))
+        print(
+            f"\nFinished in: {end - start} |",
+            f"Success: {len(success)} Failed: {len(failed)}",
+        )
+    else:
+        print("\n".join(success))
 
 
 if __name__ == "__main__":
