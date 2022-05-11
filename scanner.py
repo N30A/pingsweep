@@ -12,6 +12,7 @@ def scan(ip, success, failed):
 
     if response.success():
         success.append(ip)
+        print(ip)
     else:
         failed.append(ip)
 
@@ -46,13 +47,10 @@ def main():
     end = datetime.now().replace(microsecond=0)
 
     if args.verbose:
-        print("\n".join(success))
         print(
             f"\nFinished in: {end - start} |",
             f"Success: {len(success)} Failed: {len(failed)}",
         )
-    else:
-        print("\n".join(success))
 
 
 if __name__ == "__main__":
