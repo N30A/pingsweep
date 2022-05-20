@@ -1,25 +1,30 @@
 from argparse import ArgumentParser
 from datetime import datetime
 from ipaddress import IPv4Network
+from os import cpu_count
+from queue import Queue
 from threading import Thread
 
 from pythonping import ping
 
 
-def scan(ip, success, failed):
+def scan(success, failed):
+    while True:
+        ip = q.get()
+        response = ping(ip, count=1, timeout=0.2)
 
-    response = ping(ip, count=1, timeout=2)
-
-    if response.success():
-        success.append(ip)
-        print(ip)
-    else:
-        failed.append(ip)
+        if response.success():
+            success.append(ip)
+            print(ip)
+            q.task_done()
+        else:
+            failed.append(ip)
+            q.task_done()
 
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("IP_RANGE", help="IP Range of the network, e.g. 192.168.1.0/24")
+    parser.add_argument("IP_RANGE", help="ip range of the network, e.g. 192.168.1.0/24")
     parser.add_argument(
         "-v",
         "--verbose",
@@ -29,20 +34,18 @@ def main():
 
     args = parser.parse_args()
 
-    threads = []
     success = []
     failed = []
 
     start = datetime.now().replace(microsecond=0)
 
+    for _ in range(cpu_count() * 10):
+        Thread(target=scan, args=(success, failed), daemon=True).start()
+
     for ip in IPv4Network(args.IP_RANGE).hosts():
-        threads.append(Thread(target=scan, args=(ip.exploded, success, failed)))
+        q.put(ip.exploded)
 
-    for thread in threads:
-        thread.start()
-
-    for thread in threads:
-        thread.join()
+    q.join()
 
     end = datetime.now().replace(microsecond=0)
 
@@ -54,4 +57,5 @@ def main():
 
 
 if __name__ == "__main__":
+    q = Queue()
     main()
