@@ -10,16 +10,16 @@ from pythonping import ping
 
 def scan(success, failed):
     while True:
-        ip = q.get()
+        ip = queue.get()
         response = ping(ip, count=1, timeout=0.2)
 
         if response.success():
             success.append(ip)
             print(ip)
-            q.task_done()
         else:
             failed.append(ip)
-            q.task_done()
+
+        queue.task_done()
 
 
 def main():
@@ -43,9 +43,9 @@ def main():
         Thread(target=scan, args=(success, failed), daemon=True).start()
 
     for ip in IPv4Network(args.IP_RANGE).hosts():
-        q.put(ip.exploded)
+        queue.put(ip.exploded)
 
-    q.join()
+    queue.join()
 
     end = datetime.now().replace(microsecond=0)
 
@@ -57,5 +57,5 @@ def main():
 
 
 if __name__ == "__main__":
-    q = Queue()
+    queue = Queue()
     main()
