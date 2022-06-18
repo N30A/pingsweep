@@ -54,10 +54,6 @@ def main():
     )
     args = parser.parse_args()
 
-    # Append every valid address to the queue from the user specified ip range.
-    for address in IPv4Network(args.ip_range).hosts():
-        queue.put(address.exploded)
-
     if not args.quiet:
         print(
             f"\n> IP Range: {args.ip_range}",
@@ -65,6 +61,10 @@ def main():
             f"\n> Quiet: {args.quiet}",
             f"\n> Wait: {args.wait}s\n",
         )
+
+    # Append every valid address to the queue from the user specified ip range.
+    for address in IPv4Network(args.ip_range).hosts():
+        queue.put(address.exploded)
 
     # Time snapshot
     start = datetime.now().replace(microsecond=0)
