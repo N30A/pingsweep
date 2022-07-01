@@ -1,87 +1,99 @@
 from argparse import ArgumentParser
+from asyncio import Queue, create_task, gather, run
 from datetime import datetime
 from ipaddress import IPv4Network
 from os import cpu_count
-from queue import Queue
-from threading import Thread
 
-from pythonping import ping
+from icmplib import async_ping
 
 
-def scan(queue: Queue, wait: float, success: list, failed: list) -> None:
-    while True:
-        address = queue.get()
-        response = ping(address, count=1, timeout=wait)
-
-        if response.success():
-            success.append(address)
-            print(address)
-        else:
-            failed.append(address)
-
-        queue.task_done()
+def time():
+    return datetime.now().replace(microsecond=0)
 
 
-def main():
-    threads = cpu_count()
-    success = []
-    failed = []
+def arguments():
+    tasks = int(cpu_count() * 2.5)
 
-    queue = Queue()
     parser = ArgumentParser()
-    parser.add_argument("ip_range", help="ip range of the network, e.g. 192.168.1.0/24")
+    parser.add_argument(
+        "ip_range",
+        help="ip range of the network, e.g. 192.168.1.0/24",
+        type=IPv4Network,
+    )
     parser.add_argument(
         "-q",
         "--quiet",
         action="store_true",
-        help="quiet output, only print ip-addresses to the screen",
+        help="quiet output, only print ip-addresses to screen",
     )
     parser.add_argument(
         "-w",
         "--wait",
         type=float,
         metavar="sec",
-        default=0.1,
-        help="timeout in seconds to wait for each reply (default: 0.1s)",
+        default=1,
+        help="timeout in seconds to wait for each reply (default: 1s)",
     )
     parser.add_argument(
         "-t",
-        "--threads",
+        "--tasks",
         type=int,
-        metavar="int",
-        default=threads,
-        help=f"number of concurrent threads (default: {threads})",
+        metavar="num",
+        default=tasks,
+        help=f"number of concurrent tasks (default: {tasks})",
     )
+
     args = parser.parse_args()
+
+    return args
+
+
+async def sweeper(
+    queue: Queue[str], wait: float, success: list[str], failed: list[str]
+):
+    while True:
+        address = await queue.get()
+        host = await async_ping(address, count=1, timeout=wait)
+
+        if not host.is_alive:
+            failed.append(host.address)
+        else:
+            success.append(host.address)
+            print(host.address)
+
+        queue.task_done()
+
+
+async def main():
+    success = []
+    failed = []
+    args = arguments()
+    queue = Queue()
 
     if not args.quiet:
         print(
             f"\n> IP Range: {args.ip_range}",
-            f"\n> Threads: {args.threads}",
+            f"\n> Tasks: {args.tasks}",
             f"\n> Quiet: {args.quiet}",
             f"\n> Wait: {args.wait}s\n",
         )
 
-    # Append every valid address to the queue from the user specified ip range.
-    for address in IPv4Network(args.ip_range).hosts():
-        queue.put(address.exploded)
+    for address in args.ip_range.hosts():
+        queue.put_nowait(address.exploded)
 
-    # Time snapshot
-    start = datetime.now().replace(microsecond=0)
+    start = time()
+    tasks = []
+    for _ in range(args.tasks):
+        task = create_task(sweeper(queue, args.wait, success, failed))
+        tasks.append(task)
 
-    # Start the "scan" function with the amount of threads specified.
-    for _ in range(args.threads):
-        Thread(
-            target=scan,
-            args=(queue, args.wait, success, failed),
-            daemon=True,
-        ).start()
+    await queue.join()
 
-    # Wait until all work is finished before continuing.
-    queue.join()
+    for task in tasks:
+        task.cancel()
 
-    # Time snapshot
-    end = datetime.now().replace(microsecond=0)
+    await gather(*tasks, return_exceptions=True)
+    end = time()
 
     if not args.quiet:
         print(
@@ -91,4 +103,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        run(main())
+    except KeyboardInterrupt:
+        print("Keyboard Interrupt")
