@@ -7,13 +7,13 @@ pingsweep-tool is a easy to use asynchronous ping sweeper made using Python!
 
 Windows:
 
-`git clone https://github.com/njordice/pingsweep.git`
+`git clone https://github.com/njordice/pingsweep.git && cd pingsweep`
 
 `pip install -r requirements.txt`
 
 Linux:
 
-`git clone https://github.com/njordice/pingsweep.git`
+`git clone https://github.com/njordice/pingsweep.git && cd pingsweep`
 
 `pip3 install -r requirements.txt`
 
