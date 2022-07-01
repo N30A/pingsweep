@@ -1,7 +1,7 @@
 ![Python 3.10](http://img.shields.io/badge/python-3.10-blue.svg)
 [![MIT License](http://img.shields.io/badge/license-MIT%20License-blue.svg)](https://github.com/njordice/pingsweep/blob/main/LICENSE)
 
-pingsweep-tool is a easy to use asynchronous ping sweeper made using Python!
+pingsweep is a easy to use asynchronous ping sweeper made using Python!
 
 ## Installation
 
