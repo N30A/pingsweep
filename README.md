@@ -23,7 +23,6 @@ pip3 install -r requirements.txt
 ## Usage
 
 ```bash
-  
 usage: pingsweep.py [-h] [-q] [-w sec] [-t num] ip_range
 
 positional arguments:
