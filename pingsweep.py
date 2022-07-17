@@ -48,9 +48,7 @@ def arguments():
     return args
 
 
-async def sweeper(
-    queue: Queue[str], wait: float, success: list[str], failed: list[str]
-):
+async def sweeper(queue: Queue, wait: float, success: list, failed: list):
     while True:
         address = await queue.get()
         host = await async_ping(address, count=1, timeout=wait)
@@ -98,7 +96,9 @@ async def main():
     if not args.quiet:
         print(
             f"\nFinished in: {end - start} |",
-            f"Success: {len(success)}, Failed: {len(failed)}, Total: {len(success) + len(failed)}",
+            f"Success: {len(success)},",
+            f"Failed: {len(failed)},",
+            f"Total: {len(success) + len(failed)}",
         )
 
 
