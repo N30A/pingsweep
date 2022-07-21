@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from asyncio import Queue, create_task, gather, run
 from datetime import datetime
 from ipaddress import IPv4Network
+from logging import StreamHandler, basicConfig, getLogger, info
 from os import cpu_count
 
 from icmplib import async_ping
@@ -16,15 +17,15 @@ def arguments():
 
     parser = ArgumentParser()
     parser.add_argument(
-        "ip_range",
-        help="ip range of the network, e.g. 192.168.1.0/24",
+        "range",
+        help="network id and subnet bits, e.g. 192.168.1.0/24",
         type=IPv4Network,
     )
     parser.add_argument(
         "-q",
         "--quiet",
         action="store_true",
-        help="quiet output, only print ip-addresses to screen",
+        help="only print hosts to screen",
     )
     parser.add_argument(
         "-w",
@@ -42,6 +43,13 @@ def arguments():
         default=tasks,
         help=f"number of concurrent tasks (default: {tasks})",
     )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        metavar="path",
+        help="output to a file",
+    )
 
     args = parser.parse_args()
 
@@ -50,37 +58,51 @@ def arguments():
 
 async def sweeper(queue: Queue, wait: float, success: list, failed: list):
     while True:
-        address = await queue.get()
-        host = await async_ping(address, count=1, timeout=wait)
+        host = await async_ping(await queue.get(), count=1, timeout=wait)
 
         if not host.is_alive:
             failed.append(host.address)
         else:
             success.append(host.address)
-            print(host.address)
+            info(host.address)
 
         queue.task_done()
 
 
 async def main():
-    success = []
-    failed = []
     args = arguments()
     queue = Queue()
+    tasks = []
+    success = []
+    failed = []
+
+    basicConfig(
+        filename=args.output,
+        filemode="w",
+        format="%(message)s",
+        level=20,  # INFO
+    )
+
+    if args.output is not None:
+        # Re-enable the logger to logg to the screen if output path is given.
+        console = StreamHandler()
+        getLogger().addHandler(console)
 
     if not args.quiet:
-        print(
-            f"\n> IP Range: {args.ip_range}",
-            f"\n> Tasks: {args.tasks}",
-            f"\n> Quiet: {args.quiet}",
+        info(
+            f"\n> IP Range: {args.range}"
+            f"\n> Tasks: {args.tasks}"
+            f"\n> Quiet: {args.quiet}"
             f"\n> Wait: {args.wait}s\n",
         )
 
-    for address in args.ip_range.hosts():
-        queue.put_nowait(address.exploded)
+    # Generate a number of hosts from the given network id and subnet bits.
+    for host in args.range.hosts():
+        # And append each host to the queue.
+        queue.put_nowait(host.exploded)
 
     start = time()
-    tasks = []
+
     for _ in range(args.tasks):
         task = create_task(sweeper(queue, args.wait, success, failed))
         tasks.append(task)
@@ -94,10 +116,10 @@ async def main():
     end = time()
 
     if not args.quiet:
-        print(
-            f"\nFinished in: {end - start} |",
-            f"Success: {len(success)},",
-            f"Failed: {len(failed)},",
+        info(
+            f"\nFinished in: {end - start} | "
+            f"Success: {len(success)}, "
+            f"Failed: {len(failed)}, "
             f"Total: {len(success) + len(failed)}",
         )
 
