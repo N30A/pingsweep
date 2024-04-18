@@ -56,72 +56,76 @@ def arguments():
     return args
 
 
-async def sweeper(queue: Queue, wait: float, success: list, failed: list):
-    while True:
-        host = await async_ping(await queue.get(), count=1, timeout=wait)
+class PingSweeper():
+    
+    def __init__(self):
+        self.tasks = []
+        self.success = 0
+        self.failed = 0
+        self.args = arguments()
+        self.queue = Queue()
+        
+        basicConfig(
+            filename=self.args.output,
+            filemode="w",
+            format="%(message)s",
+            level=20,  # INFO
+        )
+        
+        if self.args.output is not None:
+            # Re-enable the logger to logg to the screen if output path is given.
+            getLogger().addHandler(StreamHandler())
 
-        if not host.is_alive:
-            failed.append(host.address)
-        else:
-            success.append(host.address)
-            info(host.address)
+    async def sweeper(self, queue: Queue, wait: float):
+        while True:
+            host = await async_ping(await queue.get(), count=1, timeout=wait)
 
-        queue.task_done()
+            if not host.is_alive:
+                self.failed += 1
+            else:
+                self.success += 1
+                info(host.address)
 
+            queue.task_done()
+
+    async def run(self):
+        if not self.args.quiet:
+            info(
+                f"\n> IP Range: {self.args.range}"
+                f"\n> Tasks: {self.args.tasks}"
+                f"\n> Quiet: {self.args.quiet}"
+                f"\n> Wait: {self.args.wait}s\n",
+            )
+
+        # Generate a number of hosts from the given network id and subnet bits.
+        for host in self.args.range.hosts():
+            # And append each host to the queue.
+            self.queue.put_nowait(host.exploded)
+
+        start = time()
+        for _ in range(self.args.tasks):
+            task = create_task(self.sweeper(self.queue, self.args.wait))
+            self.tasks.append(task)
+
+        await self.queue.join()
+
+        for task in self.tasks:
+            task.cancel()
+
+        await gather(*self.tasks, return_exceptions=True)
+        end = time()
+
+        if not self.args.quiet:
+            info(
+                f"\nFinished in: {end - start} | "
+                f"Success: {self.success}, "
+                f"Failed: {self.failed}, "
+                f"Total: {self.success + self.failed}",
+            )
 
 async def main():
-    args = arguments()
-    queue = Queue()
-    tasks = []
-    success = []
-    failed = []
-
-    basicConfig(
-        filename=args.output,
-        filemode="w",
-        format="%(message)s",
-        level=20,  # INFO
-    )
-
-    if args.output is not None:
-        # Re-enable the logger to logg to the screen if output path is given.
-        console = StreamHandler()
-        getLogger().addHandler(console)
-
-    if not args.quiet:
-        info(
-            f"\n> IP Range: {args.range}"
-            f"\n> Tasks: {args.tasks}"
-            f"\n> Quiet: {args.quiet}"
-            f"\n> Wait: {args.wait}s\n",
-        )
-
-    # Generate a number of hosts from the given network id and subnet bits.
-    for host in args.range.hosts():
-        # And append each host to the queue.
-        queue.put_nowait(host.exploded)
-
-    start = time()
-
-    for _ in range(args.tasks):
-        task = create_task(sweeper(queue, args.wait, success, failed))
-        tasks.append(task)
-
-    await queue.join()
-
-    for task in tasks:
-        task.cancel()
-
-    await gather(*tasks, return_exceptions=True)
-    end = time()
-
-    if not args.quiet:
-        info(
-            f"\nFinished in: {end - start} | "
-            f"Success: {len(success)}, "
-            f"Failed: {len(failed)}, "
-            f"Total: {len(success) + len(failed)}",
-        )
+    pingSweeper = PingSweeper()
+    await pingSweeper.run()
 
 
 if __name__ == "__main__":
